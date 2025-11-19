@@ -1,0 +1,133 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "ff8ee873-322d-4b09-9262-1465398cdf6f",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                                              file       tempo    energy  \\\n",
+      "0       ./songs/a-light-sketch-of-paris-410054.mp3  135.999178  1.000000   \n",
+      "1  ./songs/lonely-beautiful-piano-music-233867.mp3  151.999081  0.400566   \n",
+      "2           ./songs/mixkit-beautiful-dream-493.mp3  103.359375  1.000000   \n",
+      "3                      ./songs/mixkit-cbpd-400.mp3  143.554688  1.000000   \n",
+      "4         ./songs/mixkit-classical-vibes-2-682.mp3  135.999178  1.000000   \n",
+      "\n",
+      "       mood    duration  tempo_bpm  energy_pct  mood_pct  duration_s  \n",
+      "0  0.763483  213.420408        136         100        76       213.4  \n",
+      "1  0.610043  189.413878        152          40        61       189.4  \n",
+      "2  0.609506   97.018776        103         100        61        97.0  \n",
+      "3  0.804768   99.323265        144         100        80        99.3  \n",
+      "4  0.748319  113.142857        136         100        75       113.1  \n",
+      "Generated playlist sequence:\n",
+      "                                                file       tempo    energy  \\\n",
+      "1    ./songs/lonely-beautiful-piano-music-233867.mp3  151.999081  0.400566   \n",
+      "3                        ./songs/mixkit-cbpd-400.mp3  143.554688  1.000000   \n",
+      "0         ./songs/a-light-sketch-of-paris-410054.mp3  135.999178  1.000000   \n",
+      "4           ./songs/mixkit-classical-vibes-2-682.mp3  135.999178  1.000000   \n",
+      "8                ./songs/mixkit-tears-of-joy-839.mp3  123.046875  1.000000   \n",
+      "9  ./songs/moon-dance-cinematic-background-music-...  117.453835  1.000000   \n",
+      "5              ./songs/mixkit-one-more-dance-288.mp3  112.347147  1.000000   \n",
+      "2             ./songs/mixkit-beautiful-dream-493.mp3  103.359375  1.000000   \n",
+      "7                 ./songs/mixkit-smooth-jazz-640.mp3   89.102909  1.000000   \n",
+      "6                      ./songs/mixkit-smile-1076.mp3   75.999540  0.591347   \n",
+      "\n",
+      "       mood    duration  \n",
+      "1  0.610043  189.413878  \n",
+      "3  0.804768   99.323265  \n",
+      "0  0.763483  213.420408  \n",
+      "4  0.748319  113.142857  \n",
+      "8  0.713065  140.173061  \n",
+      "9  0.687177  133.982041  \n",
+      "5  0.649989  100.267075  \n",
+      "2  0.609506   97.018776  \n",
+      "7  0.556391  142.262857  \n",
+      "6  0.339054   96.592018  \n",
+      "Playlist saved as 'greedy_playlist.csv'.\n"
+     ]
+    }
+   ],
+   "source": [
+    "import pandas as pd\n",
+    "\n",
+    "# Load the CSV file\n",
+    "df = pd.read_csv('songs_features.csv')\n",
+    "\n",
+    "# Inspect the data briefly\n",
+    "print(df.head())\n",
+    "\n",
+    "# Drop any rows with missing essential feature values\n",
+    "df_clean = df.dropna(subset=['tempo', 'energy', 'mood'])\n",
+    "\n",
+    "# Define a weighted feature distance function\n",
+    "def feature_distance(songA, songB, weights=None):\n",
+    "    if weights is None:\n",
+    "        weights = {'tempo': 1, 'mood': 1, 'energy': 1}\n",
+    "    dist = 0\n",
+    "    for key in weights:\n",
+    "        dist += weights[key] * abs(songA[key] - songB[key])\n",
+    "    return dist\n",
+    "\n",
+    "# Greedy playlist generator\n",
+    "def greedy_playlist(df):\n",
+    "    used = set()\n",
+    "    current_idx = df['energy'].idxmin()  # start with lowest energy song as seed\n",
+    "    playlist_indices = [current_idx]\n",
+    "    used.add(current_idx)\n",
+    "\n",
+    "    while len(used) < len(df):\n",
+    "        current_song = df.loc[current_idx]\n",
+    "        candidates = df[~df.index.isin(used)]\n",
+    "        next_idx = candidates.apply(lambda x: feature_distance(x, current_song), axis=1).idxmin()\n",
+    "        playlist_indices.append(next_idx)\n",
+    "        used.add(next_idx)\n",
+    "        current_idx = next_idx\n",
+    "\n",
+    "    return df.loc[playlist_indices]\n",
+    "\n",
+    "# Generate playlist\n",
+    "playlist_df = greedy_playlist(df_clean)\n",
+    "\n",
+    "print(\"Generated playlist sequence:\")\n",
+    "print(playlist_df[['file', 'tempo', 'energy', 'mood', 'duration']])\n",
+    "\n",
+    "# Optionally, save the playlist order to new CSV\n",
+    "playlist_df.to_csv('greedy_playlist.csv', index=False)\n",
+    "print(\"Playlist saved as 'greedy_playlist.csv'.\")\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "18639195-509b-46eb-bfcc-ea49c09f26c8",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python [conda env:base] *",
+   "language": "python",
+   "name": "conda-base-py"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.13.5"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
