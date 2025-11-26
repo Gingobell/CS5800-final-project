@@ -202,7 +202,7 @@ def greedy_playlist(df: pd.DataFrame, start_idx: int = None, start_strategy: str
     return df.loc[playlist_indices]
 
 
-=
+
 # 8) UTILITY FUNCTION: SAVE GREEDY PLAYLIST
 
 
