@@ -1,0 +1,313 @@
+import csv
+import pandas as pd
+import random
+from typing import List, Callable, Any
+
+# 1) SONG DATA CLASS
+
+
+class Song:
+   
+    def __init__(self, file: str, mood: float, tempo: float, energy: float, duration: float):
+        self.file = file
+        self.mood = float(mood)
+        self.tempo = float(tempo)
+        self.energy = float(energy)
+        self.duration = float(duration)
+
+    def __repr__(self) -> str:
+        return f"{self.file} (mood={self.mood:.2f}, tempo={self.tempo:.2f}, energy={self.energy:.2f})"
+
+
+
+# 2) LOAD SONGS FUNCTION
+
+
+def load_songs(csv_path: str) -> List[Song]:
+   
+    songs: List[Song] = []
+    try:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    songs.append(
+                        Song(row["file"], row["mood"], row["tempo"], row["energy"], row["duration"])
+                    )
+                except ValueError as e:
+                    print(f"Warning: Skipping row with invalid data: {row}. Error: {e}")
+    except FileNotFoundError:
+        print(f"Error: File '{csv_path}' not found.")
+        raise
+    
+    return songs
+
+
+
+# 3) MERGE SORT ALGORITHM
+
+
+def merge_sort(items: List[Any], key_function: Callable[[Any], Any]) -> List[Any]:
+   
+    if len(items) <= 1:
+        return items
+
+    mid = len(items) // 2
+    left = merge_sort(items[:mid], key_function)
+    right = merge_sort(items[mid:], key_function)
+
+    merged: List[Any] = []
+    i = j = 0
+
+    while i < len(left) and j < len(right):
+        if key_function(left[i]) <= key_function(right[j]):
+            merged.append(left[i])
+            i += 1
+        else:
+            merged.append(right[j])
+            j += 1
+
+    merged.extend(left[i:])
+    merged.extend(right[j:])
+    return merged
+
+
+
+# 4) RECOMMENDED SORT
+
+
+def recommended_sort(songs: List[Song], order: str = "asc") -> List[Song]:
+    
+    factor = 1 if order == "asc" else -1
+
+    def key_function(song: Song):
+        return (factor * song.mood, factor * song.tempo, factor * song.energy)
+
+    return merge_sort(songs, key_function)
+
+
+
+# 5) CUSTOM SORT
+
+
+def custom_sort(songs: List[Song], field: str = "mood", order: str = "asc") -> List[Song]:
+   
+    if field not in ("mood", "tempo", "energy"):
+        raise ValueError('field must be one of: "mood", "tempo", "energy"')
+
+    factor = 1 if order == "asc" else -1
+
+    def key_function(song: Song):
+        return factor * getattr(song, field)
+
+    return merge_sort(songs, key_function)
+
+
+
+# 6) SAVE TO CSV
+
+
+def save_csv(songs: List[Song], filename: str) -> None:
+   
+    try:
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["file", "mood", "tempo", "energy", "duration"])
+            for s in songs:
+                writer.writerow([s.file, s.mood, s.tempo, s.energy, s.duration])
+        print(f" Saved: {filename}")
+    except IOError as e:
+        print(f"Error saving file '{filename}': {e}")
+
+
+
+# 7) GREEDY PLAYLIST GENERATOR
+
+
+def feature_distance(songA, songB) -> float:
+    """
+    Calculate the Euclidean-like distance between two songs based on features.
+    
+    Distance = |tempo_A - tempo_B| + |mood_A - mood_B| + |energy_A - energy_B|
+    
+    Args:
+        songA (dict or pd.Series): First song with features
+        songB (dict or pd.Series): Second song with features
+    
+    Returns:
+        float: Distance between the two songs
+    """
+    return (abs(songA["tempo"] - songB["tempo"]) + 
+            abs(songA["mood"] - songB["mood"]) + 
+            abs(songA["energy"] - songB["energy"]))
+
+
+def greedy_playlist(df: pd.DataFrame, start_idx: int = None, start_strategy: str = "low_energy") -> pd.DataFrame:
+    """
+    Generate a smooth playlist using greedy algorithm.
+    
+    The greedy algorithm:
+    1. Selects a starting song
+    2. At each step, selects the next unused song with minimum feature distance
+    3. Continues until all songs are sequenced
+    
+    Time Complexity: O(n^2)
+    Space Complexity: O(n)
+    
+    Args:
+        df (pd.DataFrame): DataFrame with song features (must have: tempo, mood, energy)
+        start_idx (int): Specific index to start from (0-based). If None, uses start_strategy.
+        start_strategy (str): Strategy for choosing starting song if start_idx is None.
+                             Options: "low_energy", "high_energy", "low_mood", "high_mood", "random"
+    
+    Returns:
+        pd.DataFrame: DataFrame with songs ordered by greedy algorithm
+    
+    Raises:
+        ValueError: If start_idx is out of range or invalid start_strategy
+    """
+    used = set()
+    
+    # Determine starting song index
+    if start_idx is not None:
+        if start_idx < 0 or start_idx >= len(df):
+            raise ValueError(f"start_idx must be between 0 and {len(df)-1}")
+        current_idx = df.index[start_idx]
+    else:
+        if start_strategy == "low_energy":
+            current_idx = df["energy"].idxmin()
+        elif start_strategy == "high_energy":
+            current_idx = df["energy"].idxmax()
+        elif start_strategy == "low_mood":
+            current_idx = df["mood"].idxmin()
+        elif start_strategy == "high_mood":
+            current_idx = df["mood"].idxmax()
+        elif start_strategy == "random":
+            current_idx = df.sample(1).index[0]
+        else:
+            raise ValueError('start_strategy must be one of: "low_energy", "high_energy", "low_mood", "high_mood", "random"')
+    
+    playlist_indices = [current_idx]
+    used.add(current_idx)
+
+    # Greedily select next songs
+    while len(used) < len(df):
+        current_song = df.loc[current_idx]
+        candidates = df[~df.index.isin(used)]
+        next_idx = candidates.apply(lambda x: feature_distance(x, current_song), axis=1).idxmin()
+        playlist_indices.append(next_idx)
+        used.add(next_idx)
+        current_idx = next_idx
+
+    return df.loc[playlist_indices]
+
+
+=
+# 8) UTILITY FUNCTION: SAVE GREEDY PLAYLIST
+
+
+def save_greedy_playlist(df: pd.DataFrame, filename: str) -> None:
+    """
+    Save greedy playlist to CSV file.
+    
+    Args:
+        df (pd.DataFrame): Playlist DataFrame
+        filename (str): Output CSV filename
+    """
+    try:
+        df.to_csv(filename, index=False, encoding="utf-8")
+        print(f"Saved: {filename}")
+    except IOError as e:
+        print(f"Error saving file '{filename}': {e}")
+
+
+
+# 9) MAIN SCRIPT
+
+
+def main():
+    """
+    Main execution function.
+    
+    Workflow:
+    1. Load songs from CSV
+    2. Sort using recommended and custom methods
+    3. Generate greedy playlists with different starting strategies
+    4. Save all results to CSV files
+    """
+    
+    # Configuration
+    csv_path = "songs_features.csv"
+    
+    print("=" * 70)
+    print("Smart Playlist Generator - Main Execution")
+    print("=" * 70)
+    
+    # Step 1: Load songs
+    print("\n[Step 1] Loading songs from CSV...")
+    try:
+        songs = load_songs(csv_path)
+        print(f"Loaded {len(songs)} songs")
+    except FileNotFoundError:
+        print(f"Error: '{csv_path}' not found. Please ensure the file exists.")
+        return
+
+    if len(songs) == 0:
+        print("No songs loaded. CSV file may be empty.")
+        return
+
+    # Step 2: Sorting
+    print("\n[Step 2] Sorting songs using merge sort...")
+    sorted_rec = recommended_sort(songs)
+    sorted_cus = custom_sort(songs, field="tempo", order="asc")
+    
+    save_csv(sorted_rec, "recommended_sorted.csv")
+    save_csv(sorted_cus, "custom_sorted.csv")
+    print("Sorting complete")
+
+    # Step 3: Convert to DataFrame for greedy algorithm
+    print("\n[Step 3] Preparing data for greedy algorithm...")
+    sorted_df = pd.DataFrame([{
+        "file": s.file,
+        "tempo": s.tempo,
+        "energy": s.energy,
+        "mood": s.mood,
+        "duration": s.duration
+    } for s in sorted_rec])
+    print("Data prepared")
+
+    # Step 4: Generate greedy playlists with different strategies
+    print("\n[Step 4] Generating greedy playlists with different starting strategies...")
+    
+    strategies = [
+        ("low_energy", "greedy_playlist_low_energy.csv"),
+        ("high_energy", "greedy_playlist_high_energy.csv"),
+        ("low_mood", "greedy_playlist_low_mood.csv"),
+        ("high_mood", "greedy_playlist_high_mood.csv"),
+        ("random", "greedy_playlist_random.csv"),
+    ]
+    
+    for strategy, filename in strategies:
+        greedy_df = greedy_playlist(sorted_df, start_strategy=strategy)
+        save_greedy_playlist(greedy_df, filename)
+    
+    # Generate playlist starting with a specific song (index 0)
+    greedy_df_custom = greedy_playlist(sorted_df, start_idx=0)
+    save_greedy_playlist(greedy_df_custom, "greedy_playlist_custom_start.csv")
+
+    print("\n" + "=" * 70)
+    print("All tasks completed successfully!")
+    print("=" * 70)
+    print("\nGenerated files:")
+    print("  - recommended_sorted.csv")
+    print("  - custom_sorted.csv")
+    print("  - greedy_playlist_low_energy.csv")
+    print("  - greedy_playlist_high_energy.csv")
+    print("  - greedy_playlist_low_mood.csv")
+    print("  - greedy_playlist_high_mood.csv")
+    print("  - greedy_playlist_random.csv")
+    print("  - greedy_playlist_custom_start.csv")
+
+
+if __name__ == "__main__":
+    main()
